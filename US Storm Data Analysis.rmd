@@ -1,0 +1,37 @@
+---
+title: "US Storm Data Analysis"
+author: "Helen"
+date: "21 February 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Synopsis
+This report details the methods and results of my analysis of the National Oceanic and Atmospheric Administration's Storm Database. This database contains details of extreme weather events occurring the USA between 1950 and 2011. The aim of the analysis is to identify:
+
+1. Which type of events are most harmful to public health?
+2. Which type of events have the greatest economic consequences?
+
+Determining the answers to these questions will help to prioritise resources in future extreme weather situations.
+
+## Data Processing
+
+Firstly, the data is loaded. I then run a command to get a sense of the size and format of the data.
+
+```{r, cache = TRUE}
+noaa <- read.csv("StormData.csv.bz2")
+str(noaa)
+```
+
+I also load the packages I may need.
+
+```{r, warning = FALSE}
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+```
+
+
