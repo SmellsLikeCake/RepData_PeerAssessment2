@@ -1,0 +1,88 @@
+---
+title: "NOTES - US Storm Data Analysis"
+author: "Helen"
+date: "21 February 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
+```
+
+```{r, cache = TRUE}
+noaa <- read.csv("StormData.csv.bz2")
+str(noaa)
+```
+
+I also load the packages I may need.
+
+```{r, warning = FALSE}
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+```
+
+
+## Ideas / Playing with Data
+
+I tried putting the dates and times into a non-factor format but it was a pain in the butt due to missing data so decided it wasn't required.
+
+The information I have been given states that we want to find out which events (in the EVTYPE variable) are most harmful to human health. However, there are 935 different types of events. I shall try to group these together to make the analysis more manageable.
+
+Firstly, I know there are several types of "heat" - excessive heat, excess heat, heat etc. These also are responsible for all the incidences of a large number of deaths.
+
+I will remove these into their own dataset and then create a remaining dataset without these.
+
+```{r, cache = TRUE}
+noaa_heatl <- grepl("heat", noaa$EVTYPE, ignore.case = TRUE)
+noaa_heat <- noaa[noaa_heatl, ]
+noaa_remain <- noaa[!noaa_heatl, ]
+rm(noaa_heatl)
+plot(noaa_heat$FATALITIES)
+```
+
+There are way too many of these. Let's look at the ones where people died.
+
+```{r, cache = TRUE}
+noaa_10f <- noaa[noaa$FATALITIES > 10, ]
+summary(noaa_10f$EVTYPE)
+```
+
+This shows that incidents resulting in a high number of deaths only come from a few sources and a few of these are very similar (e.g. flood / flash flood).
+
+Looking at those incidents that have killed at least 1 person:
+
+```{r}
+summary(noaa$EVTYPE[noaa$FATALITIES > 0])
+```
+
+The information I have been given states that we want to find out which events (in the EVTYPE variable) are most harmful to human health. However, there are 935 different types of events. I shall try to group these together to make the analysis more manageable.
+
+I start by grouping everything the same way (as "Other") and then gradually identifying the top causes and categorising them.
+
+Firstly let's add the extra column and then see what levels of fatalities the dataset includes.
+
+```{r, cache = TRUE}
+noaa <- tbl_df(noaa)
+noaa <- mutate(noaa, EVTYPE_1 = "Other")
+head(noaa$EVTYPE_1)
+plot(noaa$FATALITIES)
+```
+
+50 looks like a good place to start.
+
+```{r, cache = TRUE}
+noaa_50f <- noaa[noaa$FATALITIES > 50, ]
+noaa_50f <- droplevels(noaa_50f)
+noaa_50f$EVTYPE
+```
+
+So there are four levels - three heats and one tornado. I'll add these categories.
+
+```{r}
+noaa$EVTYPE_1[grepl("heat", noaa$EVTYPE, ignore.case = TRUE)] <- "Heat"
+noaa$EVTYPE_1[grepl("tornado", noaa$EVTYPE, ignore.case = TRUE)] <- "Tornado"
+sum(noaa$EVTYPE_1 == "Heat")
+```
+
+So let's now plot the fatalities split by the EVTYPE.
