@@ -19,19 +19,26 @@ Determining the answers to these questions will help to prioritise resources in 
 
 ## Data Processing
 
-Firstly, the data is loaded. I then run a command to get a sense of the size and format of the data.
-
-```{r, cache = TRUE}
-noaa <- read.csv("StormData.csv.bz2")
-str(noaa)
-```
-
-I also load the packages I may need.
+Firstly, I load the packages I may need.
 
 ```{r, warning = FALSE}
 library(ggplot2)
 library(tidyr)
 library(dplyr)
 ```
+
+Then the data is loaded. I then run a command to get a sense of the size and format of the data.
+
+```{r, cache = TRUE}
+noaa <- read.csv("StormData.csv.bz2")
+str(noaa)
+```
+
+There are several variables which are factors which would be better categorised as something else. I process these first.
+
+```{r, cache = TRUE}
+noaa$BGN_DATE <- as.Date(as.character(noaa$BGN_DATE), format = "%m/%d/%Y")
+```
+
 
 

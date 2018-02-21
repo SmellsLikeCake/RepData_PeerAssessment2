@@ -60,10 +60,11 @@ The information I have been given states that we want to find out which events (
 
 I start by grouping everything the same way (as "Other") and then gradually identifying the top causes and categorising them.
 
-Firstly let's add the extra column and then see what levels of fatalities the dataset includes.
+Firstly let's manipulate the dates into Date format, add the extra column and then see what levels of fatalities the dataset includes.
 
 ```{r, cache = TRUE}
 noaa <- tbl_df(noaa)
+noaa$BGN_DATE <- as.Date(as.character(noaa$BGN_DATE), format = "%m/%d/%Y")
 noaa <- mutate(noaa, EVTYPE_1 = "Other")
 head(noaa$EVTYPE_1)
 plot(noaa$FATALITIES)
@@ -86,3 +87,7 @@ sum(noaa$EVTYPE_1 == "Heat")
 ```
 
 So let's now plot the fatalities split by the EVTYPE.
+
+```{r}
+ggplot(noaa) + geom_point(aes(x = BGN_DATE, y = FATALITIES)) + facet_grid(. ~ EVTYPE_1)
+```
