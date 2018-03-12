@@ -20,6 +20,7 @@ I also load the packages I may need.
 library(ggplot2)
 library(tidyr)
 library(dplyr)
+library(lubridate)
 ```
 
 
@@ -81,7 +82,7 @@ noaa_50f$EVTYPE
 So there are four levels - three heats and one tornado. I'll add these categories.
 
 ```{r}
-noaa$EVTYPE_1[grepl("heat", noaa$EVTYPE, ignore.case = TRUE)] <- "Heat"
+noaa$EVTYPE_1[grepl("heat", noaa$EVTYPE, ignore.case = TRUE)] <- "Hot weather"
 noaa$EVTYPE_1[grepl("tornado", noaa$EVTYPE, ignore.case = TRUE)] <- "Tornado"
 sum(noaa$EVTYPE_1 == "Heat")
 ```
@@ -90,4 +91,88 @@ So let's now plot the fatalities split by the EVTYPE.
 
 ```{r}
 ggplot(noaa) + geom_point(aes(x = BGN_DATE, y = FATALITIES)) + facet_grid(. ~ EVTYPE_1)
+```
+
+Actually let's try a different graph where they're all on the same plot but the colours vary by type. That top heat one is also ruining the scales! I'm going to set the scales so it's not on the graph.
+
+```{r}
+ggplot(noaa) + geom_point(aes(x = BGN_DATE, y = FATALITIES, colour = EVTYPE_1)) + scale_y_continuous(limits = c(0, 200))
+```
+
+Okay that is interesting as we can see tornados reduce deaths caused over time but heat is increasing. 
+
+Let's include a few more. Let's see what causes we have looking at events that caused between 10 and 50 deaths.
+
+```{r, cache = TRUE}
+noaa_10f <- noaa[noaa$FATALITIES > 10 & noaa$FATALITIES <= 50, ]
+noaa_10f <- droplevels(noaa_10f)
+levels(noaa_10f$EVTYPE)
+```
+
+Again we can group some of these together so we can add to our EVTYPE_1.
+
+```{r}
+noaa$EVTYPE_1[grepl("flood", noaa$EVTYPE, ignore.case = TRUE)] <- "Rain / Flood"
+noaa$EVTYPE_1[grepl("rain", noaa$EVTYPE, ignore.case = TRUE)] <- "Rain / Flood"
+noaa$EVTYPE_1[grepl("hurricane", noaa$EVTYPE, ignore.case = TRUE)] <- "Hurricanes / Storms"
+noaa$EVTYPE_1[grepl("wind", noaa$EVTYPE, ignore.case = TRUE)] <- "Hurricanes / Storms"
+noaa$EVTYPE_1[grepl("tide", noaa$EVTYPE, ignore.case = TRUE)] <- "Rain / Flood"
+
+ggplot(noaa) + geom_point(aes(x = BGN_DATE, y = FATALITIES, colour = EVTYPE_1)) + scale_y_continuous(limits = c(0, 200))
+```
+
+Let's try another one where things with over 10 deaths automatically include EVTYPE but then we do some grouping too.
+
+```{r}
+noaa <- mutate(noaa, EVTYPE_2 = "Other")
+noaa$EVTYPE_2[noaa$FATALITIES > 10] <- as.character(noaa$EVTYPE[noaa$FATALITIES > 10])
+
+noaa$EVTYPE_2[grepl("heat", noaa$EVTYPE, ignore.case = TRUE)] <- "Heat"
+noaa$EVTYPE_2[grepl("tornado", noaa$EVTYPE, ignore.case = TRUE)] <- "Tornado"
+noaa$EVTYPE_2[grepl("flood", noaa$EVTYPE, ignore.case = TRUE)] <- "Rain / Flood"
+noaa$EVTYPE_2[grepl("rain", noaa$EVTYPE, ignore.case = TRUE)] <- "Rain / Flood"
+noaa$EVTYPE_2[grepl("hurricane", noaa$EVTYPE, ignore.case = TRUE)] <- "Hurricanes / Storms"
+noaa$EVTYPE_2[grepl("wind", noaa$EVTYPE, ignore.case = TRUE)] <- "Hurricanes / Storms"
+noaa$EVTYPE_2[grepl("tide", noaa$EVTYPE, ignore.case = TRUE)] <- "Rain / Flood"
+
+ggplot(noaa) + geom_point(aes(x = BGN_DATE, y = FATALITIES, colour = EVTYPE_2)) + scale_y_continuous(limits = c(1, 200))
+```
+
+Have realised this method doesn't work as doesn't label anything with below 10 deaths even if same cause as an event above 10 deaths.
+
+Back to original method.
+
+```{r}
+noaa$EVTYPE_1[grepl("warm", noaa$EVTYPE, ignore.case = TRUE)] <- "Hot weather"
+noaa$EVTYPE_1[grepl("cold", noaa$EVTYPE, ignore.case = TRUE)] <- "Cold weather"
+noaa$EVTYPE_1[grepl("storm", noaa$EVTYPE, ignore.case = TRUE)] <- "Hurricanes / Storms"
+noaa$EVTYPE_1[grepl("tsunami", noaa$EVTYPE, ignore.case = TRUE)] <- "Tsunami"
+noaa$EVTYPE_1[noaa$EVTYPE_1 == "Hurricane"] <- "Hurricanes / Storms"
+
+ggplot(noaa) + geom_point(aes(x = BGN_DATE, y = FATALITIES, colour = EVTYPE_1)) + scale_y_continuous(limits = c(0, 200))
+```
+
+This might be easier to see with a stacked bar graph by year.
+
+```{r}
+noaa <- mutate(noaa, YEAR = year(BGN_DATE))
+noaa_year_type <- group_by(noaa, YEAR, EVTYPE_1)
+noaa_total_deaths <- summarise(noaa_year_type, total_deaths = sum(FATALITIES))
+ggplot(noaa_total_deaths, aes(x = YEAR, y = total_deaths, fill = EVTYPE_1)) + geom_bar(stat = "identity") 
+
+ggplot(noaa_total_deaths[noaa_total_deaths$YEAR > 1995, ], aes(x = YEAR, y = total_deaths, fill = EVTYPE_1)) + geom_bar(stat = "identity") 
+```
+
+We can see from this graph that it looks like complete data was not really collected until maybe 1994. Let's split into facets by type.
+
+```{r}
+ggplot(noaa_total_deaths[noaa_total_deaths$YEAR > 1995, ], aes(x = YEAR, y = total_deaths, fill = EVTYPE_1)) + geom_bar(stat= "identity") + facet_grid(EVTYPE_1~.)
+```
+
+This doesn't really work so we'll go back to stacked. Now we just want the levels in the right order.
+
+```{r}
+noaa_total_deaths$EVTYPE_1 <- factor(noaa_total_deaths$EVTYPE_1, levels = c("Other", "Tsunami", "Cold weather", "Hurricanes / Storms", "Rain / Flood", "Hot weather", "Tornado"))
+
+ggplot(noaa_total_deaths[noaa_total_deaths$YEAR> 1990, ], aes(x = YEAR, y = total_deaths, fill = EVTYPE_1)) + geom_bar(stat = "identity") + geom_hline(aes(yintercept = mean(noaa_total_deaths$total_deaths[noaa_total_deaths$EVTYPE_1 == "Tornado"])))
 ```

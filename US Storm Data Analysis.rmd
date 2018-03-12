@@ -1,7 +1,7 @@
 ---
 title: "US Storm Data Analysis"
 author: "Helen"
-date: "21 February 2018"
+date: "12 March 2018"
 output: html_document
 ---
 
@@ -10,7 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ## Synopsis
-This report details the methods and results of my analysis of the National Oceanic and Atmospheric Administration's Storm Database. This database contains details of extreme weather events occurring the USA between 1950 and 2011. The aim of the analysis is to identify:
+This report details the methods and results of an analysis of the National Oceanic and Atmospheric Administration's Storm Database. This database contains details of extreme weather events occurring the USA between 1950 and 2011. The aim of the analysis is to identify:
 
 1. Which type of events are most harmful to public health?
 2. Which type of events have the greatest economic consequences?
@@ -19,26 +19,70 @@ Determining the answers to these questions will help to prioritise resources in 
 
 ## Data Processing
 
-Firstly, I load the packages I may need.
+Firstly, a number of useful packages were loaded. 
 
 ```{r, warning = FALSE}
 library(ggplot2)
 library(tidyr)
 library(dplyr)
+library(lubridate)
 ```
 
-Then the data is loaded. I then run a command to get a sense of the size and format of the data.
+Then the data was loaded, and a command was run to get a sense of the size and format of the data.
 
 ```{r, cache = TRUE}
 noaa <- read.csv("StormData.csv.bz2")
 str(noaa)
 ```
 
-There are several variables which are factors which would be better categorised as something else. I process these first.
+The data contains a number of factor variables which would be better categorised as something else. Firstly, the dates were processed into a specific fate format to make them easier to manipulate.
 
 ```{r, cache = TRUE}
 noaa$BGN_DATE <- as.Date(as.character(noaa$BGN_DATE), format = "%m/%d/%Y")
 ```
 
+To find which events had the greatest effect on human health, the FATALITIES variable was considered. It can be seen from the data summary above that there are 935 levels of EVTYPE - meaning that there are 935 different types of events. Clearly this is too many to display or understand in any meaningful way and must be grouped further. 
+
+A new variable was added to the data, EVTYPE_1, which defaults to the value "Other" unless otherwise specified. The data was also sliced to show which events resulted in over 10 deaths.
+
+```{r, cache = TRUE}
+noaa <- mutate(noaa, EVTYPE_1 = "Other")
+levels(droplevels(noaa$EVTYPE[noaa$FATALITIES > 10]))
+```
+
+This resulted in a manageable number of levels which could be grouped further in places.
+
+```{r}
+noaa$EVTYPE_1[grepl("heat", noaa$EVTYPE, ignore.case = TRUE)] <- "Extreme heat"
+noaa$EVTYPE_1[grepl("tornado", noaa$EVTYPE, ignore.case = TRUE)] <- "Tornado"
+noaa$EVTYPE_1[grepl("flood", noaa$EVTYPE, ignore.case = TRUE)] <- "Rain / Flood"
+noaa$EVTYPE_1[grepl("rain", noaa$EVTYPE, ignore.case = TRUE)] <- "Rain / Flood"
+noaa$EVTYPE_1[grepl("hurricane", noaa$EVTYPE, ignore.case = TRUE)] <- "Hurricanes / Storms"
+noaa$EVTYPE_1[grepl("wind", noaa$EVTYPE, ignore.case = TRUE)] <- "Hurricanes / Storms"
+noaa$EVTYPE_1[grepl("tide", noaa$EVTYPE, ignore.case = TRUE)] <- "Rain / Flood"
+noaa$EVTYPE_1[grepl("warm", noaa$EVTYPE, ignore.case = TRUE)] <- "Extreme heat"
+noaa$EVTYPE_1[grepl("cold", noaa$EVTYPE, ignore.case = TRUE)] <- "Extreme cold"
+noaa$EVTYPE_1[grepl("storm", noaa$EVTYPE, ignore.case = TRUE)] <- "Hurricanes / Storms"
+noaa$EVTYPE_1[grepl("tsunami", noaa$EVTYPE, ignore.case = TRUE)] <- "Tsunami"
+```
+
+Once the data had been divided into a more manageable number of categories, it was slimmed down to contain only that data needed for production of the final graph.
+
+```{r}
+noaa <- mutate(noaa, YEAR= year(BGN_DATE))
+noaa_total_deaths <- group_by(noaa, YEAR, EVTYPE_1)
+noaa_total_deaths <- summarise(noaa_total_deaths, total_deaths = sum(FATALITIES))
+```
 
 
+
+
+## Results
+
+The graph below shows the number of fatalities each year split by types of weather event. Data collected prior to around 1990 was incomplete and generally only contained information relating to tornados.
+
+```{r}
+ggplot(noaa_total_deaths, aes(x = YEAR, y = total_deaths, fill= EVTYPE_1)) + geom_bar(stat = "identity")
+```
+
+It can be seen from the graph that extreme heat, hurricanes, floods and tornadoes cause some fatalities each year. In some years one of these events is particularly extreme, such as extreme heat in 1995 and tornadoes in 2011, and will cause a much larger number of deaths than average.
