@@ -1,7 +1,7 @@
 ---
 title: "NOTES - US Storm Data Analysis"
 author: "Helen"
-date: "21 February 2018"
+date: "12 March 2018"
 output: html_document
 ---
 
@@ -21,6 +21,7 @@ library(ggplot2)
 library(tidyr)
 library(dplyr)
 library(lubridate)
+library(gridExtra)
 ```
 
 
@@ -29,6 +30,8 @@ library(lubridate)
 I tried putting the dates and times into a non-factor format but it was a pain in the butt due to missing data so decided it wasn't required.
 
 The information I have been given states that we want to find out which events (in the EVTYPE variable) are most harmful to human health. However, there are 935 different types of events. I shall try to group these together to make the analysis more manageable.
+
+### Deaths
 
 Firstly, I know there are several types of "heat" - excessive heat, excess heat, heat etc. These also are responsible for all the incidences of a large number of deaths.
 
@@ -174,5 +177,130 @@ This doesn't really work so we'll go back to stacked. Now we just want the level
 ```{r}
 noaa_total_deaths$EVTYPE_1 <- factor(noaa_total_deaths$EVTYPE_1, levels = c("Other", "Tsunami", "Cold weather", "Hurricanes / Storms", "Rain / Flood", "Hot weather", "Tornado"))
 
-ggplot(noaa_total_deaths[noaa_total_deaths$YEAR> 1990, ], aes(x = YEAR, y = total_deaths, fill = EVTYPE_1)) + geom_bar(stat = "identity") + geom_hline(aes(yintercept = mean(noaa_total_deaths$total_deaths[noaa_total_deaths$EVTYPE_1 == "Tornado"])))
+ggplot(noaa_total_deaths[noaa_total_deaths$YEAR> 1990, ], aes(x = YEAR, y = total_deaths, fill = EVTYPE_1)) + geom_bar(stat = "identity")
 ```
+
+It would be cool to add a line showing the mean of each type of event. Probably easiest to make a new dataset for this.
+
+```{r}
+noaa_mean_deaths_1990 <- noaa[noaa$YEAR > 1990, ]
+noaa_mean_deaths_1990 <- group_by(noaa_mean_deaths_1990, EVTYPE_1, YEAR)
+noaa_mean_deaths_1990 <- summarise(noaa_mean_deaths_1990, total_deaths = sum(FATALITIES))
+noaa_mean_deaths_1990 <- group_by(ungroup(noaa_mean_deaths_1990), EVTYPE_1) %>% summarise(mean_deaths = mean(total_deaths))
+noaa_mean_deaths_1990
+
+noaa_mean_deaths_1990$EVTYPE_1 <- factor(noaa_mean_deaths_1990$EVTYPE_1, levels = c("Other", "Tsunami", "Cold weather", "Hurricanes / Storms", "Rain / Flood", "Hot weather", "Tornado"))
+```
+```{r}
+ggplot(noaa_total_deaths[noaa_total_deaths$YEAR> 1990, ], aes(x = YEAR, y = total_deaths, fill = EVTYPE_1)) + geom_bar(stat = "identity") + geom_hline(data = noaa_mean_deaths_1990, aes(yintercept = mean_deaths, colour = EVTYPE_1), size = 1, linetype = "longdash")
+
+```
+
+Another way to look at each would be to see if each type of event is causing more or fewer deaths over time.
+
+```{r}
+ggplot(noaa_total_deaths[noaa_total_deaths$YEAR > 1990, ], aes(x = YEAR, y = total_deaths)) + geom_line(aes(colour = EVTYPE_1))
+```
+
+Retry the facet grid by re-ordering the factors.
+
+```{r}
+noaa_total_deaths$EVTYPE_1 <- factor(noaa_total_deaths$EVTYPE_1, levels = c("Tornado", "Hot weather", "Rain / Flood", "Hurricanes / Storms", "Cold weather", "Tsunami", "Other"))
+
+ggplot(noaa_total_deaths[noaa_total_deaths$YEAR > 1995, ], aes(x = YEAR, y = total_deaths, fill = EVTYPE_1)) + geom_bar(stat= "identity") + facet_grid(EVTYPE_1~., labeller = label_wrap_gen(width= 8, multi_line = TRUE))
+```
+
+And let's just finally see if we can see anything by state.
+
+```{r}
+ggplot(noaa, aes(x = BGN_DATE, y = FATALITIES, colour = EVTYPE_1)) + geom_point()+ facet_wrap(~ STATE)
+```
+
+Looking at over 1 deaths and ignoring outlier:
+
+```{r}
+ggplot(noaa[noaa$FATALITIES > 1, ], aes(x = BGN_DATE, y = FATALITIES, colour = EVTYPE_1)) + geom_point()+ facet_wrap(~ STATE) + scale_y_continuous(limits = c(0, 200))
+```
+
+### Injuries
+
+Right let's now look at injuries.
+
+```{r}
+ggplot(noaa, aes(x = BGN_DATE, y = INJURIES, colour = EVTYPE_1)) + geom_point()
+```
+
+And total injuries by cause each year:
+
+```{r}
+noaa_total_injuries <- summarise(noaa_year_type, total_injuries = sum(INJURIES))
+
+noaa_total_injuries$EVTYPE_1 <- factor(noaa_total_injuries$EVTYPE_1, levels = c("Tornado", "Hot weather", "Rain / Flood", "Hurricanes / Storms", "Cold weather", "Tsunami", "Other"))
+
+ggplot(noaa_total_injuries, aes(x = YEAR, y = total_injuries, fill = EVTYPE_1)) + geom_bar(stat = "identity")
+
+ggplot(noaa_total_injuries, aes(x = YEAR, y = total_injuries, fill = EVTYPE_1)) + geom_bar(stat= "identity") + facet_grid(EVTYPE_1~.)
+```
+
+Try and plot total deaths and total injuries on same graph. First, merge the dataframes.
+
+```{r}
+noaa_deaths_injs <- merge(noaa_total_deaths, noaa_total_injuries, by.x = c("YEAR", "EVTYPE_1"), by.y = c("YEAR", "EVTYPE_1"))
+head(noaa_deaths_injs)
+
+noaa_deaths_injs <- tbl_df(noaa_deaths_injs)
+noaa_deaths_injs2 <- gather(noaa_deaths_injs, key = "bad_thing", value = "people_affected", c("total_deaths", "total_injuries"))
+noaa_deaths_injs2
+```
+
+Then plot the graph.
+
+```{r}
+ggplot(noaa_deaths_injs2[noaa_deaths_injs2$YEAR > 1990, ], aes(x = YEAR, y = people_affected, fill = EVTYPE_1)) + geom_bar(stat = "identity") + facet_grid(EVTYPE_1 ~ bad_thing, scales = "free_y", labeller = label_wrap_gen(width = 8))
+```
+
+Ideally want consistent scales for deaths and consistent scales for injuries but this is a pain!
+
+```{r}
+deaths_plot <- ggplot(noaa_total_deaths[noaa_total_deaths$YEAR > 1990, ], aes(x = YEAR, y = total_deaths, fill = EVTYPE_1)) + geom_bar(stat = "identity") + facet_grid(EVTYPE_1~., labeller = label_wrap_gen(width = 10)) + guides(fill = FALSE) + xlab("Year") + ylab("Deaths per year")
+
+injuries_plot<- ggplot(noaa_total_injuries[noaa_total_injuries$YEAR > 1990, ], aes(x = YEAR, y = total_injuries, fill = EVTYPE_1)) + geom_bar(stat = "identity") + facet_grid(EVTYPE_1~., labeller = label_wrap_gen(width = 10)) + guides(fill = FALSE) + xlab("Year") + ylab("Injuries per year")
+
+grid.arrange(deaths_plot, injuries_plot, ncol = 2, nrow = 1)
+```
+
+### Economic damage
+
+Let's see what the data looks like.
+
+```{r}
+summary(noaa$PROPDMG)
+summary(noaa$PROPDMGEXP)
+levels(noaa$PROPDMGEXP)
+```
+
+From this data, I am confident that numbers with blank in PROPDMGEXP are units, K is thousands, M is millions and B billions. The rest are debatable so will be replaced by NAs.
+
+```{r}
+noaa_econ <- tbl_df(noaa) %>% select(c("BGN_DATE", "STATE", "PROPDMG", "PROPDMGEXP", "CROPDMG", "CROPDMGEXP", "YEAR"))
+noaa_econ <- mutate(noaa_econ, prop_dmg_total = "NA", crop_dmg_total = "NA", dmg_total = "NA")
+```
+
+```{r}
+## Do slicing instead
+#i <- 1
+#while(i <= nrow(noaa_econ)){
+#    if(noaa_econ$PROPDMGEXP[i] == ""){
+#        noaa_econ$prop_dmg_total[i] <- noaa_econ$PROPDMG[i]
+#    } else
+#      if(noaa_econ$PROPDMGEXP[i] == "K"){
+#          noaa_econ$prop_dmg_total[i] <- noaa_econ$PROPDMG[i] * #1000
+#      } else
+#        if(noaa_econ$PROPDMGEXP[i] == "M"){
+#          noaa_econ$prop_dmg_total[i] <- noaa_econ$PROPDMG[i] * #1000000
+#        } else
+#          if(noaa_econ$PROPDMGEXP[i] == "B"){
+#            noaa_econ$prop_dmg_total[i] <- noaa_econ$PROPDMG[i] * #1000000000
+#          }
+ # i <- i+1
+#}
