@@ -282,25 +282,101 @@ levels(noaa$PROPDMGEXP)
 From this data, I am confident that numbers with blank in PROPDMGEXP are units, K is thousands, M is millions and B billions. The rest are debatable so will be replaced by NAs.
 
 ```{r}
-noaa_econ <- tbl_df(noaa) %>% select(c("BGN_DATE", "STATE", "PROPDMG", "PROPDMGEXP", "CROPDMG", "CROPDMGEXP", "YEAR"))
+noaa_econ <- tbl_df(noaa) %>% select(c("BGN_DATE", "STATE", "EVTYPE", "EVTYPE_1", "PROPDMG", "PROPDMGEXP", "CROPDMG", "CROPDMGEXP", "YEAR"))
 noaa_econ <- mutate(noaa_econ, prop_dmg_total = "NA", crop_dmg_total = "NA", dmg_total = "NA")
 ```
 
 ```{r}
-## Do slicing instead
-#i <- 1
-#while(i <= nrow(noaa_econ)){
-#    if(noaa_econ$PROPDMGEXP[i] == ""){
-#        noaa_econ$prop_dmg_total[i] <- noaa_econ$PROPDMG[i]
-#    } else
-#      if(noaa_econ$PROPDMGEXP[i] == "K"){
-#          noaa_econ$prop_dmg_total[i] <- noaa_econ$PROPDMG[i] * #1000
-#      } else
-#        if(noaa_econ$PROPDMGEXP[i] == "M"){
-#          noaa_econ$prop_dmg_total[i] <- noaa_econ$PROPDMG[i] * #1000000
-#        } else
-#          if(noaa_econ$PROPDMGEXP[i] == "B"){
-#            noaa_econ$prop_dmg_total[i] <- noaa_econ$PROPDMG[i] * #1000000000
-#          }
- # i <- i+1
-#}
+noaa_prop_blank <- noaa_econ[noaa_econ$PROPDMGEXP == "", ]
+noaa_prop_blank$prop_dmg_total <- noaa_prop_blank$PROPDMG
+
+noaa_prop_k <- noaa_econ[noaa_econ$PROPDMGEXP == "K", ]
+noaa_prop_k$prop_dmg_total <- noaa_prop_k$PROPDMG * 1000
+
+noaa_prop_m <- noaa_econ[noaa_econ$PROPDMGEXP == "M", ]
+noaa_prop_m$prop_dmg_total <- noaa_prop_m$PROPDMG * 1000000
+
+noaa_prop_b <- noaa_econ[noaa_econ$PROPDMGEXP == "B", ]
+noaa_prop_b$prop_dmg_total <- noaa_prop_b$PROPDMG * 1000000000
+
+units <- c("", "K", "M", "B")
+
+noaa_prop_other <- subset(noaa_econ, !(PROPDMGEXP %in% units))
+head(noaa_prop_other)
+
+noaa_prop_total <- tbl_df(rbind(noaa_prop_blank, noaa_prop_k, noaa_prop_m, noaa_prop_b, noaa_prop_other))
+
+nrow(noaa_prop_total)
+
+noaa_prop_total <- arrange(noaa_prop_total, BGN_DATE)
+rm(noaa_prop_other, noaa_prop_b, noaa_prop_m, noaa_prop_k, noaa_prop_blank)
+```
+
+And now let's look at crop data.
+
+```{r}
+summary(noaa$CROPDMG)
+summary(noaa$CROPDMGEXP)
+```
+
+And let's do the same to this as we did for property.
+
+```{r}
+noaa_crop_blank <- noaa_prop_total[noaa_prop_total$CROPDMGEXP == "", ]
+noaa_crop_blank$crop_dmg_total <- noaa_crop_blank$CROPDMG
+
+noaa_crop_k <- noaa_prop_total[noaa_prop_total$CROPDMGEXP == "K", ]
+noaa_crop_k$crop_dmg_total <- noaa_crop_k$CROPDMG * 1000
+
+noaa_crop_m <- noaa_prop_total[noaa_prop_total$CROPDMGEXP == "M", ]
+noaa_crop_m$crop_dmg_total <- noaa_crop_m$CROPDMG * 1000000
+
+noaa_crop_b <- noaa_prop_total[noaa_prop_total$CROPDMGEXP == "B", ]
+noaa_crop_b$crop_dmg_total <- noaa_crop_b$CROPDMG * 1000000000
+
+noaa_crop_other <- subset(noaa_prop_total, !(CROPDMGEXP %in% units))
+head(noaa_crop_other)
+
+noaa_econ_total <- tbl_df(rbind(noaa_crop_blank, noaa_crop_k, noaa_crop_m, noaa_crop_b, noaa_crop_other))
+
+nrow(noaa_econ_total)
+
+noaa_econ_total <- arrange(noaa_econ_total, BGN_DATE)
+
+rm(noaa_crop_b, noaa_crop_m, noaa_crop_k, noaa_crop_blank, noaa_crop_other)
+```
+
+More data processing.
+
+```{r}
+str(noaa_econ_total)
+
+noaa_econ_total$prop_dmg_total <- as.numeric(noaa_econ_total$prop_dmg_total)
+
+noaa_econ_total$crop_dmg_total <- as.numeric(noaa_econ_total$crop_dmg_total)
+
+noaa_econ_total$EVTYPE_1 <- as.factor(noaa_econ_total$EVTYPE_1)
+
+noaa_econ_total <- mutate(noaa_econ_total, dmg_total = prop_dmg_total + crop_dmg_total)
+
+summary(noaa_econ_total$dmg_total)
+```
+
+Plot the damage.
+
+```{r}
+ggplot(noaa_econ_total, aes(x = BGN_DATE, y = prop_dmg_total, colour = EVTYPE_1)) + geom_point()
+
+ggplot(noaa_econ_total, aes(x = BGN_DATE, y = crop_dmg_total, colour = EVTYPE_1)) + geom_point()
+```
+
+Only looks reliable from about 1995 onwards.
+
+```{r}
+noaa_econ_total <- group_by(noaa_econ_total, YEAR, EVTYPE_1)
+noaa_econ_year <- summarise(noaa_econ_total, dmg_total_year = sum(dmg_total, na.rm = TRUE))
+
+summary(noaa_econ_year)
+
+ggplot(noaa_econ_year[noaa_econ_year$YEAR > 1995, ], aes(x = YEAR, y = dmg_total_year, fill = EVTYPE_1)) + geom_bar(stat = "identity") + facet_grid(EVTYPE_1~.) + ggtitle("Economic damage")
+```
