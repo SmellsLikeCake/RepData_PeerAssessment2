@@ -1,12 +1,12 @@
 ---
 title: "US Storm Data Analysis"
 author: "Helen"
-date: "12 March 2018"
+date: "11 April 2018"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
 ```
 
 ## Synopsis
@@ -26,22 +26,25 @@ library(ggplot2)
 library(tidyr)
 library(dplyr)
 library(lubridate)
+library(gridExtra)
 ```
 
-Then the data was loaded, and a command was run to get a sense of the size and format of the data.
+Then the data was loaded.
 
 ```{r, cache = TRUE}
 noaa <- read.csv("StormData.csv.bz2")
-str(noaa)
 ```
 
-The data contains a number of factor variables which would be better categorised as something else. Firstly, the dates were processed into a specific fate format to make them easier to manipulate.
+The dataset was very large and not all of the data was useful for this analysis. Additionally, the dataset contained a number of factor variables which would have been better categorised as something else. For this reason, the dataset was processed to reduce its size and variables such as dates were transformed into a specific date format to make them easier to manipulate.
 
 ```{r, cache = TRUE}
+noaa <- tbl_df(noaa)
+noaa <- select(noaa, c(BGN_DATE, STATE, EVTYPE, FATALITIES, INJURIES, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP))
+
 noaa$BGN_DATE <- as.Date(as.character(noaa$BGN_DATE), format = "%m/%d/%Y")
 ```
 
-To find which events had the greatest effect on human health, the FATALITIES variable was considered. It can be seen from the data summary above that there are 935 levels of EVTYPE - meaning that there are 935 different types of events. Clearly this is too many to display or understand in any meaningful way and must be grouped further. 
+To find which events had the greatest effect on human health, the FATALITIES variable was considered. There are 935 levels of EVTYPE - meaning that there are 935 different types of events. Clearly this is too many to display or understand in any meaningful way and must be grouped further. 
 
 A new variable was added to the data, EVTYPE_1, which defaults to the value "Other" unless otherwise specified. The data was also sliced to show which events resulted in over 10 deaths.
 
@@ -64,25 +67,106 @@ noaa$EVTYPE_1[grepl("warm", noaa$EVTYPE, ignore.case = TRUE)] <- "Extreme heat"
 noaa$EVTYPE_1[grepl("cold", noaa$EVTYPE, ignore.case = TRUE)] <- "Extreme cold"
 noaa$EVTYPE_1[grepl("storm", noaa$EVTYPE, ignore.case = TRUE)] <- "Hurricanes / Storms"
 noaa$EVTYPE_1[grepl("tsunami", noaa$EVTYPE, ignore.case = TRUE)] <- "Tsunami"
+
+levels(noaa$EVTYPE_1)
+```
+
+The levels were then ordered so that they would appear in the graph in the preferred order.
+
+```{r}
+noaa$EVTYPE_1 <- factor(noaa$EVTYPE_1, levels = c("Tornado", "Extreme heat", "Rain / Flood", "Hurricanes / Storms", "Extreme cold", "Tsunami", "Other"))
 ```
 
 Once the data had been divided into a more manageable number of categories, it was slimmed down to contain only that data needed for production of the final graph.
 
 ```{r}
-noaa <- mutate(noaa, YEAR= year(BGN_DATE))
-noaa_total_deaths <- group_by(noaa, YEAR, EVTYPE_1)
-noaa_total_deaths <- summarise(noaa_total_deaths, total_deaths = sum(FATALITIES))
+noaa <- mutate(noaa, YEAR = year(BGN_DATE))
+noaa_deaths_injs <- group_by(noaa, YEAR, EVTYPE_1)
+noaa_deaths_injs <- summarise(noaa_deaths_injs, total_deaths = sum(FATALITIES), total_injs = sum(INJURIES))
 ```
 
+The data was also processed to look at the economic damage. Two types of economic damage are recorded in the dataset - Property Damage and Crop Damage. The monetary damage amount is recorded under "PROPDMG" and "CROPDMG" respectively, with the units in the following column. It is not clear what all of the units represent so the dataset has been processed to keep only data which is clearly in units ("") thousands ("K"), millions ("M") or billions ("B"). The two types of damage were then added together to give the overall damage for each event.
 
+```{r}
+noaa <- mutate(noaa, PROPDMG_1 = "NA")
+noaa <- mutate(noaa, CROPDMG_1 = "NA")
 
+noaa$PROPDMG_1[noaa$PROPDMGEXP == ""] <- noaa$PROPDMG[noaa$PROPDMGEXP == ""]
+noaa$PROPDMG_1[noaa$PROPDMGEXP == "K"] <- noaa$PROPDMG[noaa$PROPDMGEXP == "K"]*1000
+noaa$PROPDMG_1[noaa$PROPDMGEXP == "M"] <- noaa$PROPDMG[noaa$PROPDMGEXP == "M"]*1000000
+noaa$PROPDMG_1[noaa$PROPDMGEXP == "B"] <- noaa$PROPDMG[noaa$PROPDMGEXP == "B"]*1000000000
+
+noaa$CROPDMG_1[noaa$CROPDMGEXP == ""] <- noaa$CROPDMG[noaa$CROPDMGEXP == ""]
+noaa$CROPDMG_1[noaa$CROPDMGEXP == "K"] <- noaa$CROPDMG[noaa$CROPDMGEXP == "K"]*1000
+noaa$CROPDMG_1[noaa$CROPDMGEXP == "M"] <- noaa$CROPDMG[noaa$CROPDMGEXP == "M"]*1000000
+noaa$CROPDMG_1[noaa$CROPDMGEXP == "B"] <- noaa$CROPDMG[noaa$CROPDMGEXP == "B"]*1000000000
+
+noaa$PROPDMG_1 <- as.numeric(noaa$PROPDMG_1)
+noaa$CROPDMG_1 <- as.numeric(noaa$CROPDMG_1)
+noaa <- mutate(noaa, TOTALDMG = PROPDMG_1 + CROPDMG_1)
+```
+
+The economic data was then summed for each category since 1990 (as data ony looks to be reliable after this date).
+
+```{r}
+noaa_1990 <- noaa[noaa$YEAR > 1990, ]
+noaa_1990 <- group_by(noaa_1990, EVTYPE_1)
+noaa_1990 <- summarise(noaa_1990, ALLPROPDMG = sum(PROPDMG_1, na.rm = TRUE), ALLCROPDMG = sum(CROPDMG_1, na.rm = TRUE), ALLDMG = sum(TOTALDMG, na.rm = TRUE))
+noaa_1990 <- gather(noaa_1990, key = dmg_type, value = dmg_since_1990, -1)
+noaa_1990
+
+```
 
 ## Results
 
-The graph below shows the number of fatalities each year split by types of weather event. Data collected prior to around 1990 was incomplete and generally only contained information relating to tornados.
+### Which events are most harmful to public health?
+
+The graph below shows the number of fatalities and injuries each year split by types of weather event. Data collected prior to around 1990 was incomplete and generally only contained information relating to tornadoes.
 
 ```{r}
-ggplot(noaa_total_deaths, aes(x = YEAR, y = total_deaths, fill= EVTYPE_1)) + geom_bar(stat = "identity")
+deaths_plot <- ggplot(noaa_deaths_injs[noaa_deaths_injs$YEAR > 1990, ], aes(x = YEAR, y = total_deaths, fill= EVTYPE_1)) + geom_bar(stat = "identity") + facet_grid(EVTYPE_1 ~ ., labeller = label_wrap_gen(width = 10)) + guides(fill = FALSE) + ggtitle("Annual fatalities from weather events") + xlab("Year")+ ylab("Deaths")
+
+injuries_plot <- ggplot(noaa_deaths_injs[noaa_deaths_injs$YEAR > 1990, ], aes(x = YEAR, y = total_injs, fill = EVTYPE_1)) + geom_bar(stat = "identity") + facet_grid(EVTYPE_1 ~ ., labeller = label_wrap_gen(width = 10)) + guides(fill = FALSE) +ggtitle("Annual injuries from weather events") + xlab("Year")+ ylab("Injuries")
+
+grid.arrange(deaths_plot, injuries_plot, ncol = 2, nrow = 1)
 ```
 
-It can be seen from the graph that extreme heat, hurricanes, floods and tornadoes cause some fatalities each year. In some years one of these events is particularly extreme, such as extreme heat in 1995 and tornadoes in 2011, and will cause a much larger number of deaths than average.
+It can be seen from the graph that tornadoes, extreme heat, floods and hurricanes are the most common causes of death and injury from extreme weather events and cause some fatalities each year. In some years one of these events is particularly extreme, such as extreme heat in 1995 and tornadoes in 2011, and will cause a much larger number of deaths than average. Flooding does not seem to have caused extreme numbers of deaths in any one year in the past, but did cause an extreme level of injuries in 1998.
+
+The graph below takes a closer look at the fatalities, considering the range of fatalities experienced each year due to different weather events.
+
+```{r}
+ggplot(noaa_deaths_injs[noaa_deaths_injs$YEAR > 1990, ], aes(x = EVTYPE_1, y = total_deaths)) + geom_boxplot(aes(fill = EVTYPE_1)) + guides(fill = "none") + labs(x = "Weather type", y = "Distribution of fatalities since 1990")
+
+```
+
+
+It can be seen from the graph that high levels of deaths in a year from extreme weather events are most likely to result from extreme heat. Although the median number of deaths in a year from extreme heat is around the same as the median for those due to floods and hurricanes, extreme heat shows a greater distribution at the high end. This means that a larger number of years have been seen that result in especially high numbers of deaths due to extreme heat, whereas for flooding and hurricanes the number of deaths tended not to diverge far from the median level.
+
+The median number of deaths from other causes is the highest of the categories, though this is unsurprising as it contains all other weather events put together. However, in further work it may be worth trying to break these weather events down further.
+
+### Which events have the greatest economic consequences?
+
+The graph below shows the total crop damage (left) and the total property damage (right) resulting from different types of extreme weather events.
+
+```{r}
+ggplot(noaa_1990[noaa_1990$dmg_type != "ALLDMG", ], aes(x = "Damage", y = dmg_since_1990/1000000000, fill = EVTYPE_1)) + geom_bar(stat = "identity") + facet_grid(. ~ dmg_type) + scale_y_continuous(labels = scales::dollar_format()) + labs(title = "Crop and Property damage since 1990", x = "Type of damage", y = "Cost of damage in $billions") + scale_fill_discrete(name = "Type of weather event")
+```
+
+It can be seen that property damage has resulted in much larger total losses since 1990 than crop damage. Total losses are around \$400 billion since 1990 for property and around \$50 billion for crops. Both types of damage have mainly been caused by flooding and hurricanes / storms, although tornados are also responsible for a significant proportion of the damage.
+
+## Conclusions
+
+The data presented in this report shows that, since 1990, four different types of weather event are most hazardous to human health and have the greatest economic consequences. However, the same events are not the most harmful in both areas.
+
+The data shows that since 1990 "extreme heat" has caused the highest number of deaths each year on average. Tornadoes, floods and hurricanes also reliably caused a number of deaths each year although these tended to be at a lower level than extreme heat. Tornadoes generally only cause a small number of deaths each year, but on occasion can result in a very significant number of deaths. Extreme cold and tsunamis can cause high levels of deaths in a single year, but even the most extreme years for these causes tended to result in fewer deaths than those due to extreme heat.
+
+Tornadoes are the weather event most likely to cause high levels of injuries to humans. Flooding generally does not cause large numbers of injuries compared to other events though occasionally extremely high levels are seen. Hurricanes have shown steady levels of injuries since 1990 though these have fallen in more recent years. Extreme heat also shows a continual low level of injuries over the years with no particularly stand out years, but a similar average level to that seen for hurricanes.
+
+It therefore seems apparent that extreme heat is the most likely weather event to cause particularly high levels of human fatalities. However, flooding and hurricanes also caused a high level of average fatalities each year compared to other weather events and should not be ignored. The level of fatalities seen for tornadoes is smaller than for the three previously mentioned weather events, though significantly more injuries were caused by this type of weather event.
+
+However, extreme heat causes very little property or crop damage compared with other weather events. Economic damage is caused mostly by flooding and hurricanes; this is true both for property and crop damage. 
+Additional resource allocation would therefore have to consider whether to aim at human life or economic property, as the greatest cause of loss to each differs. Tackling human fatalities would best be done by focusing on extreme heat, whereas tackling economic losses would best be done by focusing on protections against flooding and hurricanes.
+
+
+
